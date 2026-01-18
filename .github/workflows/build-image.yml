@@ -3,15 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'Dockerfile'
-      - 'app.js'
-      - 'config.js'
-      - 'db.js'
-      - 'web/**'
-      - 'routes/**'
-  pull_request:
-    branches: [ main ]
+    # 删掉了具体的 paths 限制，确保你改了 litestream.yml 也能触发更新
   workflow_dispatch:
 
 jobs:
@@ -40,11 +32,8 @@ jobs:
         with:
           context: .
           push: true
+          # 关键点：镜像名称统一为 nav-item，且强制转为小写处理
           tags: |
             ghcr.io/${{ github.repository_owner }}/nav-item:latest
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=nav-item
-            org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
