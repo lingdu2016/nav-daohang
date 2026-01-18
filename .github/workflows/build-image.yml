@@ -34,6 +34,6 @@ jobs:
           push: true
           # 关键点：镜像名称统一为 nav-item，且强制转为小写处理
           tags: |
-            ghcr.io/${{ github.repository_owner }}/nav-item:latest
+            ghcr.io/${{ github.repository_owner }}/nav-daohang:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
