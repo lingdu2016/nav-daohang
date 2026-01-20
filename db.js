@@ -1,32 +1,25 @@
-const fs = require('fs')
-const path = require('path')
-const sqlite3 = require('sqlite3').verbose()
+const fs = require('fs');
+const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
 
-/**
- * 核心逻辑：
- * 1. 在 Render 生产环境，我们会设置 DATABASE_PATH 为 /tmp/nav.db
- * 2. 在本地开发环境，它会默认在项目根目录生成 data/nav.db，方便你调试
- */
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '../data', 'nav.db')
-
-// 自动创建数据库文件夹，防止目录不存在报错
-const dbDir = path.dirname(DB_PATH)
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true })
-}
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '../data', 'nav.db');
 
 const db = new sqlite3.Database(DB_PATH, (err) => {
-  if (err) {
-    console.error('SQLite 连接失败:', err.message)
-  } else {
-    console.log('SQLite 已连接:', DB_PATH)
-    // 权限加固：确保数据库文件可读写
-    try {
-        fs.chmodSync(DB_PATH, 0o666)
-    } catch (e) {
-        // 忽略在某些环境下的权限修改失败
-    }
+  if (!err) {
+    console.log('SQLite 已连接:', DB_PATH);
+    
+    // 关键点：检查 users 表是否存在，如果不存在则运行初始化脚本
+    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", (err, row) => {
+      if (!row) {
+        console.log('检测到新数据库，正在初始化表结构...');
+        const initSql = fs.readFileSync(path.join(__dirname, 'init.sql'), 'utf8');
+        db.exec(initSql, (err) => {
+          if (err) console.error('初始化失败:', err.message);
+          else console.log('数据库初始化成功！请使用默认账号登录。');
+        });
+      }
+    });
   }
-})
+});
 
-module.exports = db
+module.exports = db;
