@@ -1,7 +1,7 @@
 dbs:
   - path: /tmp/nav.db  # 必须改到这里
     replicas:
-      - url: s3://${B2_BUCKET_NAME}/
+      - url: s3://${B2_BUCKET_NAME}/nav.db
         endpoint: ${B2_ENDPOINT}
         access-key-id: ${B2_KEY_ID}
         secret-access-key: ${B2_KEY_SECRET}
