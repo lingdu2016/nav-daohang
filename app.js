@@ -1,3 +1,11 @@
+const { spawn } = require('child_process');
+
+// 启动 litestream 实时同步
+spawn('litestream', ['replicate', '-config', '/app/litestream.yml'], {
+  stdio: 'inherit'
+});
+
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -43,4 +51,5 @@ app.use('/api/users', userRoutes);
 
 app.listen(PORT, () => {
   console.log(`server is running at http://localhost:${PORT}`);
+
 }); 
