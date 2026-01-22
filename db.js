@@ -1,24 +1,32 @@
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
-const path = require('path');
-const bcrypt = require('bcrypt');
 const { execSync } = require('child_process');
-const config = require('./config');
 
-// 路径处理
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'nav.db');
-const dbDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dbDir)) { fs.mkdirSync(dbDir, { recursive: true }); }
+const DB_PATH = process.env.DATABASE_PATH || '/data/nav.db';
 
-// 启动前恢复逻辑 (Litestream)
+// 启动时 restore
 if (!fs.existsSync(DB_PATH)) {
-    try {
-        console.log('检测到本地无数据库，尝试从云端恢复...');
-        execSync(`litestream restore -if-db-not-exists -config /app/litestream.yml ${DB_PATH}`, { stdio: 'inherit' });
-    } catch (e) { console.log('跳过恢复'); }
+  try {
+    execSync(
+      `litestream restore -if-replica-exists -config /app/litestream.yml ${DB_PATH}`,
+      { stdio: 'inherit' }
+    );
+  } catch (e) {
+    console.log('[DB] 首次启动，无远端数据库');
+  }
 }
 
 const db = new sqlite3.Database(DB_PATH);
+
+db.serialize(() => {
+  db.run('PRAGMA journal_mode = DELETE;');
+  db.run('PRAGMA busy_timeout = 5000;');
+});
+
+module.exports = db;
+
+
+
 
 db.serialize(() => {
     // 1. 建表
@@ -111,3 +119,4 @@ function insertCards(menuMap, subMenuMap) {
 }
 
 module.exports = db;
+
