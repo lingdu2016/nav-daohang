@@ -1,29 +1,72 @@
+// db.js
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
-const { execSync } = require('child_process');
+const path = require('path');
 
-const DB_PATH = process.env.DATABASE_PATH || '/data/nav.db';
+const DB_PATH = '/tmp/nav.db';
 
-// 启动时 restore
-if (!fs.existsSync(DB_PATH)) {
-  try {
-    execSync(
-      `litestream restore -if-replica-exists -config /app/litestream.yml ${DB_PATH}`,
-      { stdio: 'inherit' }
-    );
-  } catch (e) {
-    console.log('[DB] 首次启动，无远端数据库');
-  }
+// 确保 /tmp 目录存在（理论上 HF 一定有，但防御性）
+if (!fs.existsSync('/tmp')) {
+  fs.mkdirSync('/tmp', { recursive: true });
 }
 
-const db = new sqlite3.Database(DB_PATH);
+// 如果数据库不存在，创建空文件（restore 前后都安全）
+if (!fs.existsSync(DB_PATH)) {
+  fs.closeSync(fs.openSync(DB_PATH, 'w'));
+}
 
+// 打开数据库
+const db = new sqlite3.Database(
+  DB_PATH,
+  sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
+  (err) => {
+    if (err) {
+      console.error('[SQLite] 打开数据库失败:', err);
+      process.exit(1);
+    }
+  }
+);
+
+// 关键：HF + Litestream 必须设置这些 pragma
 db.serialize(() => {
+  // 禁用 WAL（否则 Litestream + 写操作必死）
   db.run('PRAGMA journal_mode = DELETE;');
+
+  // 防止写操作因锁失败而直接失败
   db.run('PRAGMA busy_timeout = 5000;');
+
+  // 保守同步策略，降低 IO 风险
+  db.run('PRAGMA synchronous = NORMAL;');
 });
 
+// 👉 关键修复：让 sqlite3 在写失败时真正抛错
+const _run = db.run;
+db.run = function (sql, params = [], callback) {
+  return _run.call(this, sql, params, function (err) {
+    if (err) {
+      console.error('[SQLite RUN ERROR]');
+      console.error('SQL:', sql);
+      console.error('Params:', params);
+      console.error(err);
+    }
+    if (callback) callback(err);
+  });
+};
+
+const _exec = db.exec;
+db.exec = function (sql, callback) {
+  return _exec.call(this, sql, function (err) {
+    if (err) {
+      console.error('[SQLite EXEC ERROR]');
+      console.error('SQL:', sql);
+      console.error(err);
+    }
+    if (callback) callback(err);
+  });
+};
+
 module.exports = db;
+
 
 
 
@@ -119,4 +162,5 @@ function insertCards(menuMap, subMenuMap) {
 }
 
 module.exports = db;
+
 
