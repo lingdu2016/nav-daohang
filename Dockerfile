@@ -19,4 +19,7 @@ COPY . .
 COPY --from=frontend-builder /app/dist ./web/dist
 
 # 这里的启动命令是关键
-CMD ["sh", "-c", "litestream restore -if-replica-exists /app/database/nav.db && litestream replicate -exec 'npm start'"]
+CMD ["sh", "-c", "litestream restore -if-replica-exists /data/nav.db && litestream replicate -config /app/litestream.yml -exec 'npm start'"]
+
+#CMD ["sh", "-c", "litestream restore -if-replica-exists /app/database/nav.db && litestream replicate -exec 'npm start'"]
+
