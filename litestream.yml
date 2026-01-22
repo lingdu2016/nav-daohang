@@ -1,5 +1,5 @@
 dbs:
-  - path: /tmp/nav.db  # 必须改到这里
+  - path: /data/nav.db
     replicas:
       - url: s3://${B2_BUCKET_NAME}/nav.db
         endpoint: ${B2_ENDPOINT}
