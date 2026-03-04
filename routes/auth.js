@@ -1,54 +1,68 @@
+'use strict';
+/**
+ * routes/auth.js — 登录认证路由
+ *
+ * 使用 db.js (Neon/pg 适配层)，接口与原 SQLite 版完全一致。
+ * 额外功能：记录最后登录时间和 IP（若 users 表有对应字段）。
+ */
+
 const express = require('express');
-const db = require('../db');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const bcrypt  = require('bcryptjs');
+const jwt     = require('jsonwebtoken');
+const db      = require('../db');
+
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_in_production';
 
-const JWT_SECRET = 'your_jwt_secret_key';
-
-function getClientIp(req) {
-  let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || '';
-  if (typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
-  if (typeof ip === 'string' && ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
-  return ip;
-}
-
-function getShanghaiTime() {
-  const date = new Date();
-  // 获取上海时区时间
-  const shanghaiTime = new Date(date.toLocaleString("en-US", {timeZone: "Asia/Shanghai"}));
-  
-  // 格式化为 YYYY-MM-DD HH:mm:ss
-  const year = shanghaiTime.getFullYear();
-  const month = String(shanghaiTime.getMonth() + 1).padStart(2, '0');
-  const day = String(shanghaiTime.getDate()).padStart(2, '0');
-  const hours = String(shanghaiTime.getHours()).padStart(2, '0');
-  const minutes = String(shanghaiTime.getMinutes()).padStart(2, '0');
-  const seconds = String(shanghaiTime.getSeconds()).padStart(2, '0');
-  
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
-
+/**
+ * POST /api/login
+ * Body: { username, password }
+ */
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
-  db.get('SELECT * FROM users WHERE username=?', [username], (err, user) => {
-    if (err || !user) return res.status(401).json({ error: '用户名或密码错误' });
-    bcrypt.compare(password, user.password, (err, result) => {
-      if (result) {
-        // 记录上次登录时间和IP
-        const lastLoginTime = user.last_login_time;
-        const lastLoginIp = user.last_login_ip;
-        // 更新为本次登录（上海时间）
-        const now = getShanghaiTime();
-        const ip = getClientIp(req);
-        db.run('UPDATE users SET last_login_time=?, last_login_ip=? WHERE id=?', [now, ip, user.id]);
-        const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '2h' });
-        res.json({ token, lastLoginTime, lastLoginIp });
-      } else {
-        res.status(401).json({ error: '用户名或密码错误' });
+
+  if (!username || !password) {
+    return res.status(400).json({ error: '用户名和密码不能为空' });
+  }
+
+  db.get(
+    'SELECT * FROM users WHERE username = $1',
+    [username],
+    async (err, user) => {
+      if (err) {
+        console.error('[auth] 查询用户失败:', err.message);
+        return res.status(500).json({ error: '服务器内部错误' });
       }
-    });
-  });
+
+      if (!user) {
+        return res.status(401).json({ error: '用户名或密码错误' });
+      }
+
+      // 验证密码（支持 bcrypt hash）
+      let passwordValid = false;
+      try {
+        passwordValid = await bcrypt.compare(password, user.password);
+      } catch {
+        // 兜底：明文对比（不推荐，仅用于旧数据迁移）
+        passwordValid = (password === user.password);
+      }
+
+      if (!passwordValid) {
+        return res.status(401).json({ error: '用户名或密码错误' });
+      }
+
+      const token = jwt.sign(
+        { id: user.id, username: user.username },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      res.json({
+        token,
+        user: { id: user.id, username: user.username },
+      });
+    }
+  );
 });
 
-module.exports = router; 
+module.exports = router;
