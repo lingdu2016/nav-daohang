@@ -40,7 +40,7 @@
             <td><input v-model="card.title" @blur="updateCard(card)" class="table-input" /></td>
             <td><input v-model="card.url" @blur="updateCard(card)" class="table-input" /></td>
             <td><input v-model="card.logo_url" @blur="updateCard(card)" class="table-input" placeholder="logo链接(可选)" /></td>
-            <td><input v-model="card.desc" @blur="updateCard(card)" class="table-input" placeholder="描述（可选）" /></td>
+            <td><input v-model="card.description" @blur="updateCard(card)" class="table-input" placeholder="描述（可选）" /></td>
             <td><input v-model.number="card.order" type="number" @blur="updateCard(card)" class="table-input order-input" /></td>
             <td>
               <button class="btn btn-danger btn-icon" @click="deleteCard(card.id)" title="删除">
@@ -133,7 +133,7 @@ async function updateCard(card) {
     title: card.title,
     url: card.url,
     logo_url: card.logo_url,
-    desc: card.desc,
+    description: card.description,
     order: card.order
   });
   loadCards();
@@ -178,8 +178,6 @@ async function deleteCard(id) {
   letter-spacing: -0.5px;
 }
 
-
-
 .card-add {
   margin: 0 auto;
   display: flex;
@@ -216,167 +214,81 @@ async function deleteCard(id) {
   color: #374151;
 }
 
-/* 表格列宽度设置 */
-.card-table th:nth-child(1), /* 标题列 */
-.card-table td:nth-child(1) {
-  width: 12%;
-}
+.card-table th:nth-child(1),
+.card-table td:nth-child(1) { width: 12%; }
 
-.card-table th:nth-child(2), /* 网址列 */
-.card-table td:nth-child(2) {
-  width: 25%;
-}
+.card-table th:nth-child(2),
+.card-table td:nth-child(2) { width: 25%; }
 
-.card-table th:nth-child(3), /* Logo链接列 */
-.card-table td:nth-child(3) {
-  width: 25%;
-}
+.card-table th:nth-child(3),
+.card-table td:nth-child(3) { width: 25%; }
 
-.card-table th:nth-child(4), /* 描述列 */
-.card-table td:nth-child(4) {
-  width: 15%;
-}
+.card-table th:nth-child(4),
+.card-table td:nth-child(4) { width: 15%; }
 
-.card-table th:nth-child(5), /* 排序列 */
-.card-table td:nth-child(5) {
-  width: 8%;
-}
+.card-table th:nth-child(5),
+.card-table td:nth-child(5) { width: 8%; }
 
-.card-table th:nth-child(6), /* 操作列 */
-.card-table td:nth-child(6) {
-  width: 15%;
-  text-align: center;
-}
+.card-table th:nth-child(6),
+.card-table td:nth-child(6) { width: 15%; text-align: center; }
 
 .input {
   padding: 10px 12px;
+  border: 1.5px solid rgba(255,255,255,0.3);
   border-radius: 8px;
-  border: 1px solid #d0d7e2;
-  background: #fff;
-  color: #222;
-  font-size: 0.9rem;
-  transition: all 0.2s ease;
+  font-size: 14px;
+  background: rgba(255,255,255,0.15);
+  color: white;
+  outline: none;
+  transition: border-color 0.2s;
 }
 
-/* 窄输入框 - 主菜单、子菜单、卡片标题 */
-.input.narrow {
-  width: 140px;
-}
+.input::placeholder { color: rgba(255,255,255,0.6); }
+.input:focus { border-color: rgba(255,255,255,0.8); }
+.input.narrow { width: 120px; }
+.input.wide { width: 180px; }
 
-/* 中等输入框 - 添加卡片按钮 */
-.input.medium {
-  width: 140px;
-}
-
-/* 宽输入框 - 卡片链接、logo链接 */
-.input.wide {
-  width: 200px;
-}
-
-/* 表格内输入框 */
 .table-input {
   width: 100%;
-  padding: 8px 4px;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  color: #222;
-  font-size: 0.85rem;
-  transition: all 0.2s ease;
-}
-
-.table-input:focus {
+  font-size: 13px;
   outline: none;
-  border-color: #399dff;
-  box-shadow: 0 0 0 2px rgba(57, 157, 255, 0.1);
+  transition: border-color 0.2s;
+  box-sizing: border-box;
 }
 
-.input:focus {
-  outline: none;
-  border-color: #399dff;
-  box-shadow: 0 0 0 3px rgba(57, 157, 255, 0.1);
-}
-
-.order-input {
-  width: 60px;
-}
+.table-input:focus { border-color: #667eea; }
+.order-input { width: 60px; }
 
 .btn {
-  padding: 10px 8px;
-  border: none;
-  border-radius: 8px;
-  background: #399dff;
-  color: white;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 0.9rem;
-  transition: all 0.2s;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(255,255,255,0.2);
+  color: white;
 }
 
-.btn-icon {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 6px;
-}
-
-.btn:hover {
-  background: #2d7dd2;
-  transform: translateY(-1px);
-}
+.btn:hover { background: rgba(255,255,255,0.35); }
 
 .btn-danger {
-  background: #ef4444;
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 .btn-danger:hover {
-  background: #dc2626;
+  background: #fecaca;
 }
 
-@media (max-width: 768px) {
-  .card-manage {
-    width: 94%;
-    padding: 16px;
-  }
-  
-  .card-card {
-    padding: 16px 12px;
-  }
-  
-  .card-add {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-  
-  .input.narrow,
-  .input.medium,
-  .input.wide {
-    width: 100%;
-  }
-  
-  .order-input {
-    width: 60px;
-  }
-  
-  /* 移动端表格列宽度调整 */
-  .card-table th:nth-child(1),
-  .card-table td:nth-child(1),
-  .card-table th:nth-child(2),
-  .card-table td:nth-child(2),
-  .card-table th:nth-child(3),
-  .card-table td:nth-child(3),
-  .card-table th:nth-child(4),
-  .card-table td:nth-child(4),
-  .card-table th:nth-child(5),
-  .card-table td:nth-child(5),
-  .card-table th:nth-child(6),
-  .card-table td:nth-child(6) {
-    width: auto;
-  }
+.btn-icon {
+  padding: 6px;
 }
-</style> 
+</style>
