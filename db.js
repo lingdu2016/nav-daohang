@@ -1,238 +1,167 @@
-// db.js
-const sqlite3 = require('sqlite3').verbose();
-const fs = require('fs');
-
-const DB_PATH = '/tmp/nav.db';
-
 /**
- * ===============================
- * 准备数据库文件
- * ===============================
+ * db.js — Neon (PostgreSQL) 适配层
+ *
+ * 对外暴露与原 SQLite 完全一致的 db.run / db.get / db.all 接口，
+ * 所有现有路由文件无需任何改动即可直接使用。
+ *
+ * 内部将：
+ *  1. SQLite 的 ? 占位符自动转换为 PG 的 $1 $2 ...
+ *  2. INSERT 语句自动追加 RETURNING id 以支持 this.lastID
+ *  3. 以 this.changes / this.lastID 的形式回调，与 SQLite API 保持一致
  */
-if (!fs.existsSync('/tmp')) {
-  fs.mkdirSync('/tmp', { recursive: true });
-}
-if (!fs.existsSync(DB_PATH)) {
-  fs.closeSync(fs.openSync(DB_PATH, 'w'));
-}
 
-/**
- * ===============================
- * 打开数据库
- * ===============================
- */
-const db = new sqlite3.Database(
-  DB_PATH,
-  sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
-  (err) => {
-    if (err) {
-      console.error('[SQLite] 打开数据库失败:', err);
-      process.exit(1);
-    }
-  }
-);
+'use strict';
 
-/**
- * ===============================
- * SQLite 配置（HF + Litestream 必须）
- * ===============================
- */
-db.serialize(() => {
-  db.run('PRAGMA journal_mode = DELETE;');
-  db.run('PRAGMA busy_timeout = 5000;');
-  db.run('PRAGMA synchronous = NORMAL;');
+const { Pool } = require('pg');
+
+// ─── 连接池 ───────────────────────────────────────────────────────────────────
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: false }
+    : false,
+  // 连接池参数，适合 Render Free 单实例
+  max: 5,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
 });
 
-/**
- * ===============================
- * 建表
- * ===============================
- */
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS menus (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    "order" INTEGER DEFAULT 0
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS sub_menus (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    parent_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    "order" INTEGER DEFAULT 0,
-    FOREIGN KEY(parent_id) REFERENCES menus(id) ON DELETE CASCADE
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS cards (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    menu_id INTEGER,
-    sub_menu_id INTEGER,
-    title TEXT NOT NULL,
-    url TEXT NOT NULL,
-    logo_url TEXT,
-    desc TEXT,
-    "order" INTEGER DEFAULT 0
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS friends (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    url TEXT NOT NULL,
-    logo TEXT
-  )`);
+pool.on('error', (err) => {
+  console.error('[Neon] 连接池意外错误:', err.message);
 });
 
-/**
- * ===============================
- * 初始化数据（严格串行）
- * ===============================
- */
-db.get('SELECT COUNT(*) AS count FROM menus', (err, row) => {
-  if (err) {
-    console.error(err);
-    return;
-  }
-  if (row.count === 0) {
-    console.log('数据库为空，开始初始化...');
-    initMenus();
-  }
-});
+// ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
 /**
- * ===============================
- * 1️⃣ 初始化菜单（串行）
- * ===============================
+ * 将 SQLite 风格的 ? 占位符转换为 PostgreSQL 风格的 $1, $2 ...
  */
-const defaultMenus = [
-  ['Home', 1],
-  ['Ai Stuff', 2],
-  ['Cloud', 3],
-  ['Software', 4],
-  ['Tools', 5],
-  ['Other', 6],
-];
-
-const menuMap = {};
-const subMenuMap = {};
-
-function initMenus() {
-  let i = 0;
-
-  function next() {
-    if (i >= defaultMenus.length) {
-      console.log('菜单完成，开始子菜单');
-      return initSubMenus();
-    }
-
-    const [name, order] = defaultMenus[i];
-
-    db.run(
-      'INSERT INTO menus (name, "order") VALUES (?, ?)',
-      [name, order],
-      function (err) {
-        if (err) return console.error(err);
-        menuMap[name] = this.lastID;
-        i++;
-        next();
-      }
-    );
-  }
-
-  next();
+function convertPlaceholders(sql) {
+  let index = 0;
+  return sql.replace(/\?/g, () => `$${++index}`);
 }
 
 /**
- * ===============================
- * 2️⃣ 初始化子菜单（串行）
- * ===============================
+ * 判断是否为 INSERT 语句（需要追加 RETURNING id）
  */
-const subMenus = [
-  { parent: 'Ai Stuff', name: 'AI chat', order: 1 },
-  { parent: 'Ai Stuff', name: 'AI tools', order: 2 },
-  { parent: 'Tools', name: 'Dev Tools', order: 1 },
-  { parent: 'Software', name: 'Mac', order: 1 },
-  { parent: 'Software', name: 'Windows', order: 4 },
-];
+function isInsert(sql) {
+  return /^\s*INSERT\s+INTO/i.test(sql);
+}
 
-function initSubMenus() {
-  let i = 0;
+// ─── SQLite 兼容接口 ──────────────────────────────────────────────────────────
 
-  function next() {
-    if (i >= subMenus.length) {
-      console.log('子菜单完成，开始卡片');
-      return initCards();
-    }
+/**
+ * db.run(sql, params, callback)
+ * 对应 SQLite db.run：执行写操作（INSERT / UPDATE / DELETE）
+ * callback(err) — this 上下文包含 lastID 和 changes
+ */
+function run(sql, params, callback) {
+  // 支持省略 params 的调用方式：db.run(sql, callback)
+  if (typeof params === 'function') {
+    callback = params;
+    params = [];
+  }
+  params = params || [];
 
-    const sub = subMenus[i];
-    const parentId = menuMap[sub.parent];
+  let pgSql = convertPlaceholders(sql);
 
-    db.run(
-      'INSERT INTO sub_menus (parent_id, name, "order") VALUES (?, ?, ?)',
-      [parentId, sub.name, sub.order],
-      function (err) {
-        if (err) return console.error(err);
-        subMenuMap[`${sub.parent}_${sub.name}`] = this.lastID;
-        i++;
-        next();
-      }
-    );
+  // INSERT 追加 RETURNING id 以获取自增主键
+  if (isInsert(pgSql) && !/RETURNING/i.test(pgSql)) {
+    pgSql = pgSql.replace(/;?\s*$/, ' RETURNING id');
   }
 
-  next();
+  pool.query(pgSql, params)
+    .then((result) => {
+      const ctx = {
+        lastID: result.rows?.[0]?.id ?? null,
+        changes: result.rowCount ?? 0,
+      };
+      if (callback) callback.call(ctx, null);
+    })
+    .catch((err) => {
+      console.error('[db.run] SQL 执行错误:', err.message, '\nSQL:', pgSql);
+      if (callback) callback(err);
+    });
 }
 
 /**
- * ===============================
- * 3️⃣ 初始化卡片（串行）
- * ===============================
+ * db.get(sql, params, callback)
+ * 对应 SQLite db.get：查询单行
+ * callback(err, row)
  */
-const cards = [
-  { menu: 'Home', title: 'Baidu', url: 'https://www.baidu.com', desc: '搜索引擎' },
-  { menu: 'Home', title: 'YouTube', url: 'https://www.youtube.com', desc: '视频' },
-  { menu: 'Home', title: 'GitHub', url: 'https://github.com', desc: '代码托管' },
-  { subMenu: 'AI chat', title: 'DeepSeek', url: 'https://www.deepseek.com', desc: 'AI 搜索' },
-];
-
-function initCards() {
-  let i = 0;
-
-  function next() {
-    if (i >= cards.length) {
-      console.log('所有数据初始化完成！');
-      return;
-    }
-
-    const card = cards[i];
-    const menuId = card.menu ? menuMap[card.menu] : null;
-
-    let subMenuId = null;
-    if (card.subMenu) {
-      for (const key in subMenuMap) {
-        if (key.endsWith(`_${card.subMenu}`)) {
-          subMenuId = subMenuMap[key];
-          break;
-        }
-      }
-    }
-
-    db.run(
-      'INSERT INTO cards (menu_id, sub_menu_id, title, url, desc) VALUES (?, ?, ?, ?, ?)',
-      [menuId, subMenuId, card.title, card.url, card.desc],
-      (err) => {
-        if (err) return console.error(err);
-        i++;
-        next();
-      }
-    );
+function get(sql, params, callback) {
+  if (typeof params === 'function') {
+    callback = params;
+    params = [];
   }
+  params = params || [];
 
-  next();
+  const pgSql = convertPlaceholders(sql);
+
+  pool.query(pgSql, params)
+    .then((result) => {
+      const row = result.rows?.[0] ?? undefined;
+      if (callback) callback(null, row);
+    })
+    .catch((err) => {
+      console.error('[db.get] SQL 执行错误:', err.message, '\nSQL:', pgSql);
+      if (callback) callback(err);
+    });
 }
 
-module.exports = db;
+/**
+ * db.all(sql, params, callback)
+ * 对应 SQLite db.all：查询多行
+ * callback(err, rows)
+ */
+function all(sql, params, callback) {
+  if (typeof params === 'function') {
+    callback = params;
+    params = [];
+  }
+  params = params || [];
+
+  const pgSql = convertPlaceholders(sql);
+
+  pool.query(pgSql, params)
+    .then((result) => {
+      if (callback) callback(null, result.rows || []);
+    })
+    .catch((err) => {
+      console.error('[db.all] SQL 执行错误:', err.message, '\nSQL:', pgSql);
+      if (callback) callback(err);
+    });
+}
+
+/**
+ * db.serialize(fn)
+ * SQLite 中用于强制串行执行，PG 不需要，提供空实现保持兼容
+ */
+function serialize(fn) {
+  if (typeof fn === 'function') fn();
+}
+
+// ─── 暴露原始连接池（供 health check 使用）──────────────────────────────────
+
+/**
+ * 健康检查：测试 Neon 是否可达
+ * @returns {Promise<{ok: boolean, latencyMs: number, error?: string}>}
+ */
+async function healthCheck() {
+  const start = Date.now();
+  try {
+    await pool.query('SELECT 1');
+    return { ok: true, latencyMs: Date.now() - start };
+  } catch (err) {
+    return { ok: false, latencyMs: Date.now() - start, error: err.message };
+  }
+}
+
+// ─── 导出 ─────────────────────────────────────────────────────────────────────
+module.exports = {
+  run,
+  get,
+  all,
+  serialize,   // 空实现，保持兼容
+  pool,        // 暴露给 init-db 直接使用
+  healthCheck, // 暴露给 /health 端点
+};
