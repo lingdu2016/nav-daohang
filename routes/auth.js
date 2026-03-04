@@ -1,14 +1,13 @@
 'use strict';
 
 const express = require('express');
+// 注意：这里改用 bcryptjs 以确保在 Docker/Render 环境下无需编译就能运行
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const db      = require('../db');
 
 const router = express.Router();
-
-// 严格获取环境变量
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -17,14 +16,8 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: '用户名和密码不能为空' });
   }
 
-  // 检查服务端配置
-  if (!JWT_SECRET) {
-    console.error('[auth] 严重错误: 环境变量 JWT_SECRET 未设置');
-    return res.status(500).json({ error: '服务器配置错误，请联系管理员' });
-  }
-
   try {
-    // 使用 Promise 包装 db.get 确保同步执行
+    // 包装成 Promise 确保 db.get 执行完
     const user = await new Promise((resolve, reject) => {
       db.get('SELECT * FROM users WHERE username = $1', [username], (err, row) => {
         if (err) return reject(err);
@@ -33,21 +26,15 @@ router.post('/login', async (req, res) => {
     });
 
     if (!user) {
-      console.warn(`[auth] 登录失败: 用户 [${username}] 不存在`);
+      console.log(`[auth] 用户未找到: ${username}`);
       return res.status(401).json({ error: '用户名或密码错误' });
     }
 
-    // 验证密码
-    let isMatch = false;
-    try {
-      isMatch = await bcrypt.compare(password, user.password);
-    } catch (e) {
-      console.error('[auth] Bcrypt 校验出错:', e.message);
-      isMatch = (password === user.password); // 兜底明文比对
-    }
-
+    // 校验密码
+    const isMatch = await bcrypt.compare(password, user.password);
+    
     if (!isMatch) {
-      console.warn(`[auth] 登录失败: 用户 [${username}] 密码错误`);
+      console.log(`[auth] 密码不匹配: ${username}`);
       return res.status(401).json({ error: '用户名或密码错误' });
     }
 
@@ -59,15 +46,14 @@ router.post('/login', async (req, res) => {
     );
 
     console.log(`[auth] ✅ 登录成功: ${username}`);
-    
-    return res.json({
+    res.json({
       token,
-      user: { id: user.id, username: user.username },
+      user: { id: user.id, username: user.username }
     });
 
   } catch (err) {
-    console.error('[auth] 接口异常:', err.message);
-    return res.status(500).json({ error: '服务器内部错误' });
+    console.error('[auth] 内部错误:', err.message);
+    res.status(500).json({ error: '服务器错误' });
   }
 });
 
