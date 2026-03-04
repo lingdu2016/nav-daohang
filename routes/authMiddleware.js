@@ -1,5 +1,7 @@
+'use strict';
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = 'your_jwt_secret_key';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_in_production';
 
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
@@ -12,8 +14,8 @@ function authMiddleware(req, res, next) {
     req.user = payload;
     next();
   } catch (e) {
-    return res.status(401).json({ error: '无效token' });
+    return res.status(401).json({ error: '无效 token 或已过期' });
   }
 }
 
-module.exports = authMiddleware; 
+module.exports = authMiddleware;
