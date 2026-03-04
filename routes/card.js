@@ -1,3 +1,5 @@
+'use strict';
+
 const express = require('express');
 const db = require('../db');
 const auth = require('./authMiddleware');
@@ -23,8 +25,7 @@ router.get('/:menuId', (req, res) => {
 
     rows.forEach(card => {
       if (!card.custom_logo_path) {
-        card.display_logo =
-          card.logo_url || card.url.replace(/\/+$/, '') + '/favicon.ico';
+        card.display_logo = card.logo_url || card.url.replace(/\/+$/, '') + '/favicon.ico';
       } else {
         card.display_logo = '/uploads/' + card.custom_logo_path;
       }
@@ -35,10 +36,10 @@ router.get('/:menuId', (req, res) => {
 });
 
 /**
- * 新增卡片（🔥关键修复点）
+ * 新增卡片
  */
 router.post('/', auth, (req, res) => {
-  const { menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, desc, order } = req.body;
+  const { menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, description, order } = req.body;
 
   if (!title || !url) {
     return res.status(400).json({ error: 'title 和 url 必填' });
@@ -54,19 +55,10 @@ router.post('/', auth, (req, res) => {
         if (!row) return res.status(400).json({ error: '子菜单不存在' });
 
         db.run(
-          `INSERT INTO cards 
-           (menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, desc, "order")
+          `INSERT INTO cards
+           (menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, description, "order")
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            row.parent_id,
-            sub_menu_id,
-            title,
-            url,
-            logo_url,
-            custom_logo_path,
-            desc,
-            order || 0
-          ],
+          [row.parent_id, sub_menu_id, title, url, logo_url, custom_logo_path, description, order || 0],
           function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
@@ -78,35 +70,25 @@ router.post('/', auth, (req, res) => {
   // 情况 2：属于一级菜单
   else if (menu_id) {
     db.run(
-      `INSERT INTO cards 
-       (menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, desc, "order")
+      `INSERT INTO cards
+       (menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, description, "order")
        VALUES (?, NULL, ?, ?, ?, ?, ?, ?)`,
-      [
-        menu_id,
-        title,
-        url,
-        logo_url,
-        custom_logo_path,
-        desc,
-        order || 0
-      ],
+      [menu_id, title, url, logo_url, custom_logo_path, description, order || 0],
       function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ id: this.lastID });
       }
     );
-  }
-  // 情况 3：非法
-  else {
+  } else {
     return res.status(400).json({ error: '必须指定 menu_id 或 sub_menu_id' });
   }
 });
 
 /**
- * 修改卡片（同样兜底）
+ * 修改卡片
  */
 router.put('/:id', auth, (req, res) => {
-  const { menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, desc, order } = req.body;
+  const { menu_id, sub_menu_id, title, url, logo_url, custom_logo_path, description, order } = req.body;
 
   if (sub_menu_id) {
     db.get(
@@ -124,20 +106,10 @@ router.put('/:id', auth, (req, res) => {
             url=?,
             logo_url=?,
             custom_logo_path=?,
-            desc=?,
+            description=?,
             "order"=?
            WHERE id=?`,
-          [
-            row.parent_id,
-            sub_menu_id,
-            title,
-            url,
-            logo_url,
-            custom_logo_path,
-            desc,
-            order || 0,
-            req.params.id
-          ],
+          [row.parent_id, sub_menu_id, title, url, logo_url, custom_logo_path, description, order || 0, req.params.id],
           function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ changed: this.changes });
@@ -154,19 +126,10 @@ router.put('/:id', auth, (req, res) => {
         url=?,
         logo_url=?,
         custom_logo_path=?,
-        desc=?,
+        description=?,
         "order"=?
        WHERE id=?`,
-      [
-        menu_id,
-        title,
-        url,
-        logo_url,
-        custom_logo_path,
-        desc,
-        order || 0,
-        req.params.id
-      ],
+      [menu_id, title, url, logo_url, custom_logo_path, description, order || 0, req.params.id],
       function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ changed: this.changes });
