@@ -3,6 +3,7 @@
 
 require('dotenv').config();
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 
 if (!process.env.DATABASE_URL) {
   console.error('❌ [init-db] 致命错误：DATABASE_URL 环境变量未设置');
@@ -42,9 +43,11 @@ const CREATE_TABLES_SQL = `
   );
 
   CREATE TABLE IF NOT EXISTS users (
-    id       SERIAL PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
+    id              SERIAL PRIMARY KEY,
+    username        TEXT UNIQUE NOT NULL,
+    password        TEXT NOT NULL,
+    last_login_time TEXT,
+    last_login_ip   TEXT
   );
 
   CREATE TABLE IF NOT EXISTS friends (
@@ -97,7 +100,6 @@ async function main() {
   } catch (err) {
     console.error('❌ [init-db] 致命错误：无法连接到 Neon 数据库');
     console.error('   错误详情:', err.message);
-    console.error('   服务启动已中止，防止数据静默丢失。');
     process.exit(1);
   }
 
@@ -155,14 +157,16 @@ async function main() {
     }
     console.log(`[init-db]   → 卡片写入完成 (${DEFAULT_CARDS.length} 条)`);
 
+    // 运行时动态生成 bcrypt hash，避免硬编码 hash 出错
     const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-    const adminPassword = process.env.ADMIN_PASSWORD_HASH
-      || '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
+    const adminPlainPassword = process.env.ADMIN_PASSWORD || '123456';
+    const adminPasswordHash = await bcrypt.hash(adminPlainPassword, 10);
+
     await client.query(
       'INSERT INTO users (username, password) VALUES ($1, $2) ON CONFLICT (username) DO NOTHING',
-      [adminUsername, adminPassword]
+      [adminUsername, adminPasswordHash]
     );
-    console.log(`[init-db]   → 管理员账号写入完成 (username: ${adminUsername})`);
+    console.log(`[init-db]   → 管理员账号写入完成 (username: ${adminUsername}, password: ${adminPlainPassword})`);
 
     await client.query('COMMIT');
     console.log('[init-db] ✅ 种子数据写入成功，服务即将启动');
